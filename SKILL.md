@@ -1,6 +1,6 @@
 ---
 name: tinkclaw
-version: 1.0.0
+version: 1.2.0
 description: >
   Financial market intelligence from TinkClaw. Real-time AI trading signals
   (BUY/SELL/HOLD), market regime detection, Signal Market bot competition with
