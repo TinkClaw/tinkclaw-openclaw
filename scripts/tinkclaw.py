@@ -8,6 +8,10 @@ Usage:
     python3 tinkclaw.py ask "What's the outlook for gold?"
     python3 tinkclaw.py leaderboard
     python3 tinkclaw.py scan crypto|stocks|forex
+    python3 tinkclaw.py challenge
+    python3 tinkclaw.py bot <bot_id>
+    python3 tinkclaw.py verify <proof_hash>
+    python3 tinkclaw.py feed
 """
 
 import json
@@ -18,6 +22,7 @@ import urllib.error
 
 API_BASE = os.getenv("TINKCLAW_API_URL", "https://tinkclaw.com")
 API_KEY = os.getenv("TINKCLAW_API_KEY", "")
+MARKET_KEY = os.getenv("TINKCLAW_MARKET_KEY", "")
 
 CRYPTO = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "DOT", "NEAR", "APT",
@@ -35,12 +40,13 @@ FOREX = [
 ]
 
 
-def _request(path: str, method: str = "GET", body: dict | None = None) -> dict:
+def _request(path: str, method: str = "GET", body: dict | None = None, auth_key: str = "") -> dict:
     """Make an authenticated request to TinkClaw API."""
     url = f"{API_BASE}{path}"
     headers = {"Content-Type": "application/json"}
-    if API_KEY:
-        headers["Authorization"] = f"Bearer {API_KEY}"
+    key = auth_key or API_KEY
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
 
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -128,22 +134,52 @@ def cmd_ask(question: str):
 
 
 def cmd_leaderboard():
-    """Fetch the prediction leaderboard."""
-    data = _request("/api/chat/leaderboard?period=all")
+    """Fetch the Signal Market leaderboard."""
+    data = _request("/market/leaderboard?limit=20&min_predictions=5")
     lb = data.get("leaderboard", [])
 
     results = []
-    for e in lb[:10]:
+    for i, e in enumerate(lb):
         results.append({
-            "rank": e.get("rank", 0),
-            "name": e.get("username", ""),
-            "record": f"{e.get('hits', 0)}W / {e.get('misses', 0)}L",
-            "accuracy": f"{e.get('accuracy', 0)}%",
-            "predictions": e.get("total", 0),
-            "streak": e.get("streak", 0),
+            "rank": i + 1,
+            "name": e.get("bot_name", ""),
+            "bot_id": e.get("bot_id", ""),
+            "badge": e.get("badge_tier", "none"),
+            "record": f"{e.get('wins', 0)}W-{e.get('losses', 0)}L",
+            "accuracy": f"{(e.get('win_rate', 0) * 100):.0f}%",
+            "resolved": e.get("resolved_predictions", 0),
+            "tier": e.get("access_tier", "free"),
         })
 
-    print(json.dumps({"leaderboard": results, "note": "All predictions SHA-256 hash-chained. Verify at tinkclaw.com"}, indent=2))
+    print(json.dumps({
+        "leaderboard": results,
+        "total_bots": data.get("total", 0),
+        "note": "All predictions SHA-256 hash-chained. Verify at tinkclaw.com/signal-market/verify/{hash}",
+    }, indent=2))
+
+
+def cmd_challenge():
+    """Fetch the 100K $TKCL Challenge info."""
+    data = _request("/market/challenge")
+    print(json.dumps(data, indent=2))
+
+
+def cmd_bot(bot_id: str):
+    """Fetch a bot's profile."""
+    data = _request(f"/market/bot/{bot_id}")
+    print(json.dumps(data, indent=2))
+
+
+def cmd_verify(proof_hash: str):
+    """Verify a prediction's proof chain."""
+    data = _request(f"/market/verify/{proof_hash}")
+    print(json.dumps(data, indent=2))
+
+
+def cmd_feed():
+    """Fetch the live prediction feed."""
+    data = _request("/market/feed?limit=30")
+    print(json.dumps(data, indent=2))
 
 
 def cmd_scan(asset_class: str):
@@ -189,6 +225,14 @@ def main():
         cmd_ask(" ".join(sys.argv[2:]))
     elif cmd == "leaderboard":
         cmd_leaderboard()
+    elif cmd == "challenge":
+        cmd_challenge()
+    elif cmd == "bot" and len(sys.argv) >= 3:
+        cmd_bot(sys.argv[2])
+    elif cmd == "verify" and len(sys.argv) >= 3:
+        cmd_verify(sys.argv[2])
+    elif cmd == "feed":
+        cmd_feed()
     elif cmd == "scan" and len(sys.argv) >= 3:
         cmd_scan(sys.argv[2])
     else:
